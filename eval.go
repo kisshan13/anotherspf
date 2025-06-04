@@ -86,13 +86,21 @@ func (spf *SPFInfo) evalMx(host string) ([]*net.MX, error) {
 	return net.LookupMX(host)
 }
 
-func (spf *SPFInfo) evalRules(ip string, host string, rules []*Rule) {
+func (spf *SPFInfo) evalRules(ip string, host string, sender string, rules []*Rule) error {
+
+	context := MacroContext{
+		Sender:        sender,
+		IP:            ip,
+		Helo:          host,
+		Domain:        host,
+		Authoritative: host,
+	}
 
 	_, isExists := spf.lookedDns[host]
 
 	if isExists {
 		spf.Status = PermError
-		return
+		return nil
 	}
 
 	spf.mu.Lock()
@@ -100,25 +108,29 @@ func (spf *SPFInfo) evalRules(ip string, host string, rules []*Rule) {
 	spf.mu.Unlock()
 
 	for _, rule := range rules {
-		if rule.Mechanism != "" {
-			switch rule.Mechanism {
-			case MIp4, MIp6:
+		if rule.Key != "" {
+			if rule.ContainsMacro {
+				rule.Value = expandMacros(rule.Value, context)
+			}
+
+			switch rule.Key {
+			case string(MIp4), string(MIp6):
 				result := checkIp(ip, nil, rule)
 				spf.Status = result
 
 				if result == Pass {
 					spf.PassedRule = rule
-					return
+					return nil
 				}
 
-			case MMx:
+			case string(MMx):
 				result, err := spf.evalMx(host)
 
 				if err != nil || result == nil {
 
 					if _, ok := err.(*lookupLimitError); ok {
 						spf.Status = PermError
-						return
+						return nil
 					}
 
 					spf.Status = TempError
@@ -131,7 +143,7 @@ func (spf *SPFInfo) evalRules(ip string, host string, rules []*Rule) {
 					if err != nil || result == nil {
 						if _, ok := err.(*lookupLimitError); ok {
 							spf.Status = PermError
-							return
+							return nil
 						}
 
 						spf.Status = TempError
@@ -142,18 +154,18 @@ func (spf *SPFInfo) evalRules(ip string, host string, rules []*Rule) {
 						spf.Status = result
 						if result == Pass {
 							spf.PassedRule = rule
-							return
+							return nil
 						}
 					}
 				}
 
-			case MA:
+			case string(MA):
 				result, err := spf.evalA(host)
 
 				if err != nil || result == nil {
 					if _, ok := err.(*lookupLimitError); ok {
 						spf.Status = PermError
-						return
+						return nil
 					}
 
 					spf.Status = TempError
@@ -165,52 +177,100 @@ func (spf *SPFInfo) evalRules(ip string, host string, rules []*Rule) {
 					spf.Status = result
 					if result == Pass {
 						spf.PassedRule = rule
-						return
+						return nil
 					}
 				}
 
-			case MInclude:
+			case string(MInclude):
 				result, err := spf.evalTxt(rule.Value)
 
 				if err != nil || result == nil {
 					if _, ok := err.(*lookupLimitError); ok {
 						spf.Status = PermError
-						return
+						return nil
 					}
 
 					spf.Status = TempError
 					continue
 				}
 
-				_, res, r, err := evalRecords(result)
+				r, res, err := parse(result)
 
-				spf.Status = res
-
-				if r == nil || err != nil {
-					continue
+				if err != nil {
+					spf.Status = res
+					return err
 				}
 
-				spf.evalRules(ip, rule.Value, r)
+				if len(r) == 0 {
+					spf.Status = PermError
+					return err
+				}
 
-			case MExists:
+				spf.evalRules(ip, rule.Value, sender, r)
+
+				if spf.Status == Pass {
+					return nil
+				}
+
+			case string(MExists):
 				result, err := spf.evalA(rule.Value)
 
 				if err != nil || result == nil {
+					if _, ok := err.(*lookupLimitError); ok {
+						spf.Status = PermError
+						return nil
+					}
+
 					spf.Status = Fail
-					return
+					return nil
 				}
 
 				if len(result) <= 0 {
 					spf.Status = Fail
-					return
+					return nil
 				}
 
-			case MAll:
+			case string(ModRedirect):
+				if rule.Value == "" {
+					spf.Status = PermError
+					return nil
+				}
+
+				result, err := spf.evalTxt(rule.Value)
+
+				if err != nil || result == nil {
+					if _, ok := err.(*lookupLimitError); ok {
+						spf.Status = PermError
+						return nil
+					}
+
+					spf.Status = Fail
+					return nil
+				}
+
+				r, res, err := parse(result)
+
+				if err != nil {
+					spf.Status = res
+					return nil
+				}
+
+				if len(r) == 0 {
+					spf.Status = PermError
+					return nil
+				}
+
+				spf.evalRules(ip, rule.Value, sender, r)
+
+			case string(MAll):
 				spf.Status = QualifierResultByStatus[rule.Qualifier]
-				return
+				return nil
 			}
 		}
+
 	}
+
+	return nil
 }
 
 func checkIp(ip string, anyIp net.IP, rule *Rule) Result {
@@ -242,134 +302,5 @@ func checkIp(ip string, anyIp net.IP, rule *Rule) Result {
 		}
 
 	}
-	return None
-}
-
-func evalRecords(records []string) (string, Result, []*Rule, error) {
-	spfRecord := ""
-
-	for _, record := range records {
-		if strings.HasPrefix(record, prefix) {
-			spfRecord = record
-			break
-		}
-	}
-
-	if spfRecord == "" {
-		return "", TempError, nil, fmt.Errorf("failed to get spf record")
-	}
-
-	parsed, err := parse(spfRecord)
-
-	if err != nil {
-		return spfRecord, PermError, nil, fmt.Errorf("invalid syntaxt for spf record")
-	}
-
-	return spfRecord, Pass, parsed, nil
-}
-
-func (spf *spfInfo) parseSpf(records []string) (SPFResult, []*parsedSpf, error) {
-	spfRecord := ""
-
-	for _, record := range records {
-		if strings.HasPrefix(record, prefix) {
-			spfRecord = record
-			break
-		}
-	}
-
-	if spfRecord == "" {
-		return TempError, nil, fmt.Errorf("failed to get spf record")
-	}
-
-	parsed, err := parse(spfRecord)
-
-	if err != nil {
-		return PermError, nil, fmt.Errorf("invalid syntaxt for spf record")
-	}
-
-	return Pass, parsed, nil
-}
-
-func (spf *spfInfo) compareRules(ip string, host string, parsed []*parsedSpf) (*parsedSpf, SPFResult) {
-	passed := &parsedSpf{}
-	status := None
-
-	for _, rule := range parsed {
-		if rule.mechanism != "" {
-			switch rule.mechanism {
-			case ip4:
-				status = rule.checkIp4(ip)
-
-				if status == Pass {
-					passed = rule
-					break
-				}
-
-			case ip6:
-				status = rule.checkIp6(ip)
-
-				if status == Pass {
-					passed = rule
-					break
-				}
-
-			case a:
-				spf.mu.Lock()
-				val, isExists := spf.lookups[host]
-
-				if !isExists {
-					spf.lookups[host] = &lookup{
-						a:   true,
-						txt: false,
-						mx:  false,
-					}
-				} else {
-					if val != nil {
-
-					}
-				}
-			}
-		}
-	}
-
-	return passed, status
-}
-
-func (spf *spfInfo) evaluateTxtRecords(host string) ([]string, error) {
-
-	spf.mu.Lock()
-	defer spf.mu.Unlock()
-	spf.lookupDepth += 1
-
-	_, isExists := spf.lookups[host]
-
-	if isExists {
-		return nil, nil
-	}
-
-	spf.lookups[host] = &lookup{
-		txt: true,
-		a:   false,
-		mx:  false,
-	}
-	return net.LookupTXT(host)
-}
-
-func (rule *parsedSpf) checkA(ip string, host string) SPFResult {
-	ips, err := net.LookupIP(host)
-
-	if err != nil {
-		return PermError
-	}
-
-	for _, i := range ips {
-		if i.To4() != nil {
-			if ip == i.String() {
-				return qualifierStatusMap[rule.qualifier]
-			}
-		}
-	}
-
 	return None
 }

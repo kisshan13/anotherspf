@@ -80,11 +80,20 @@ type Lookup struct {
 }
 
 type Rule struct {
-	Modifier  Modifier
-	Mechanism Mechanism
-	Qualifier Qualifier
-	Key       string
-	Value     string
+	Modifier      Modifier
+	Mechanism     Mechanism
+	Qualifier     Qualifier
+	ContainsMacro bool
+	Key           string
+	Value         string
+}
+
+type MacroContext struct {
+	Sender        string // %{s}  Sender’s email address (e.g., "user@example.com")
+	IP            string // %{i}  IP address of the sending mail server
+	Helo          string // %{h}  HELO/EHLO domain used in SMTP
+	Domain        string // %{o}  Sender’s domain (part after @ in email address)
+	Authoritative string // %{d}  Authoritative sending domain (SPF record owner)
 }
 
 func (le *lookupLimitError) Error() string {
