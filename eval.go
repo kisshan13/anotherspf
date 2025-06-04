@@ -124,7 +124,13 @@ func (spf *SPFInfo) evalRules(ip string, host string, sender string, rules []*Ru
 				}
 
 			case string(MMx):
-				result, err := spf.evalMx(host)
+				value := host
+
+				if rule.Value != "" {
+					value = rule.Value
+				}
+
+				result, err := spf.evalMx(value)
 
 				if err != nil || result == nil {
 
@@ -160,7 +166,14 @@ func (spf *SPFInfo) evalRules(ip string, host string, sender string, rules []*Ru
 				}
 
 			case string(MA):
-				result, err := spf.evalA(host)
+
+				value := host
+
+				if rule.Value != "" {
+					value = rule.Value
+				}
+
+				result, err := spf.evalA(value)
 
 				if err != nil || result == nil {
 					if _, ok := err.(*lookupLimitError); ok {
