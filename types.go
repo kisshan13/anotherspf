@@ -1,6 +1,9 @@
 package anotherspf
 
-import "sync"
+import (
+	"net"
+	"sync"
+)
 
 type Result string
 type Modifier string
@@ -71,6 +74,13 @@ type SPFInfo struct {
 	Rule        []*Rule
 	Record      string
 	mu          sync.Mutex
+	resolver    DNSResolver
+}
+
+type DNSResolver interface {
+	LookupTXT(host string) ([]string, error)
+	LookupIP(host string) ([]net.IP, error)
+	LookupMX(name string) ([]*net.MX, error)
 }
 
 type Lookup struct {

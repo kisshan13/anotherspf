@@ -5,11 +5,11 @@ import (
 )
 
 func Test_GmailSPF(t *testing.T) {
-	ip := "66.102.1.100"          // Known Google IP
+	ip := "74.125.195.27"         // Known Google IP
 	sender := "kisshan@gmail.com" // Email sender
 	domain := "gmail.com"         // Envelope domain
 
-	info, err := Check(ip, domain, sender)
+	info, err := Check(ip, domain, sender, nil)
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
 	}
@@ -23,7 +23,7 @@ func Test_GmailSPFFailed(t *testing.T) {
 	sender := "kisshan@gmail.com" // Email sender
 	domain := "gmail.com"         // Envelope domain
 
-	info, err := Check(ip, domain, sender)
+	info, err := Check(ip, domain, sender, nil)
 	if err != nil {
 		t.Errorf("Expected no error, got: %v", err)
 	}

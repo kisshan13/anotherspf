@@ -63,7 +63,7 @@ func (spf *SPFInfo) evalTxt(host string) ([]string, error) {
 		return nil, err
 	}
 
-	return net.LookupTXT(host)
+	return spf.resolver.LookupTXT(host)
 }
 
 func (spf *SPFInfo) evalA(host string) ([]net.IP, error) {
@@ -73,7 +73,7 @@ func (spf *SPFInfo) evalA(host string) ([]net.IP, error) {
 		return nil, err
 	}
 
-	return net.LookupIP(host)
+	return spf.resolver.LookupIP(host)
 }
 
 func (spf *SPFInfo) evalMx(host string) ([]*net.MX, error) {
@@ -83,7 +83,7 @@ func (spf *SPFInfo) evalMx(host string) ([]*net.MX, error) {
 		return nil, err
 	}
 
-	return net.LookupMX(host)
+	return spf.resolver.LookupMX(host)
 }
 
 func (spf *SPFInfo) evalRules(ip string, host string, sender string, rules []*Rule) error {

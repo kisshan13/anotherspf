@@ -4,12 +4,17 @@ import (
 	"fmt"
 )
 
-func Check(ip string, domain string, sender string) (*SPFInfo, error) {
+func Check(ip string, domain string, sender string, resolver DNSResolver) (*SPFInfo, error) {
 	info := &SPFInfo{
 		LookupCount: 0,
 		Lookups:     make(map[string]*Lookup),
 		lookedDns:   make(map[string]bool),
 		Status:      None,
+		resolver:    resolver,
+	}
+
+	if resolver == nil {
+		info.resolver = &defaultResolver{}
 	}
 
 	records, err := info.evalTxt(domain)
