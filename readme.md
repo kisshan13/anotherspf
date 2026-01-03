@@ -15,6 +15,7 @@ go get github.com/kisshan13/anotherspf
 * [RFC 7208-compliant](https://datatracker.ietf.org/doc/html/rfc7208) SPF evaluation
 * Supports IPv4 and IPv6
 * Enforces 10-DNS-lookup limit per SPF spec
+* Pluggable DNS resolver interface
 * Evaluates SPF mechanisms and modifiers:
 
   * `a`, `mx`, `ip4`, `ip6`, `include`, `exists`, `all`
@@ -26,26 +27,70 @@ go get github.com/kisshan13/anotherspf
 
 ## Usage
 
+### Basic usage (default DNS resolver)
+
 ```go
-info, err := anotherspf.Check("192.0.2.1", "example.com", "user@example.com")
+info, err := anotherspf.Check(
+    "192.0.2.1",
+    "example.com",
+    "user@example.com",
+    nil, // uses default DNS resolver
+)
 if err != nil {
     log.Fatal(err)
 }
+
 fmt.Println("SPF result:", info.Status)
+```
+
+### Using a custom DNS resolver
+
+```go
+resolver := &MyResolver{} // implements DNSResolver
+
+info, err := anotherspf.Check(
+    "192.0.2.1",
+    "example.com",
+    "user@example.com",
+    resolver,
+)
 ```
 
 ---
 
 ## Core Function
 
-### `func Check(ip string, domain string, sender string) (*SPFInfo, error)`
+### `func Check(ip string, domain string, sender string, resolver DNSResolver) (*SPFInfo, error)`
 
 Evaluates the SPF record for the given sender IP, domain, and envelope sender address.
 
-* Retrieves TXT records
-* Parses the SPF string
-* Evaluates SPF mechanisms and modifiers recursively
-* Returns a structured `SPFInfo` object and evaluation result
+**Behavior:**
+
+* Uses the provided `DNSResolver` for all DNS lookups
+* Falls back to an internal default resolver if `resolver` is `nil`
+* Retrieves TXT records for the domain
+* Parses the SPF record
+* Recursively evaluates SPF mechanisms and modifiers
+* Tracks DNS lookups and enforces RFC limits
+* Returns a structured `SPFInfo` object and an error (if any)
+
+---
+
+## DNS Resolver Interface
+
+### `type DNSResolver`
+
+Allows full control over DNS resolution, useful for testing, caching, custom DNS stacks, or sandboxed environments.
+
+```go
+type DNSResolver interface {
+    LookupTXT(host string) ([]string, error)
+    LookupIP(host string) ([]net.IP, error)
+    LookupMX(name string) ([]*net.MX, error)
+}
+```
+
+If `nil` is passed to `Check`, a default resolver using Go’s standard `net` package is used internally.
 
 ---
 
@@ -68,6 +113,8 @@ type SPFInfo struct {
 }
 ```
 
+---
+
 ### `type Rule`
 
 Represents a parsed SPF rule (mechanism or modifier).
@@ -83,6 +130,8 @@ type Rule struct {
 }
 ```
 
+---
+
 ### `type MacroContext`
 
 Carries contextual variables for SPF macro expansion.
@@ -96,6 +145,8 @@ type MacroContext struct {
     Authoritative string
 }
 ```
+
+---
 
 ### `type Result`
 
@@ -117,19 +168,19 @@ const (
 
 ## Mechanisms & Modifiers
 
-### Supported SPF Mechanisms:
+### Supported SPF Mechanisms
 
 * `ip4`, `ip6`
 * `a`, `mx`, `exists`
 * `include`, `all`
 
-## Modifiers:
+### Supported Modifiers
 
 * `redirect=<domain>`
 * `exp=<explanation>`
 * Unknown modifiers are parsed but ignored.
 
-## Qualifiers:
+### Qualifiers
 
 ```go
 const (
@@ -146,7 +197,8 @@ const (
 
 * Enforces a strict **maximum of 10 DNS lookups**
 * Deduplicates A, MX, and TXT queries per host
-* Fails with `PermError` if the limit is exceeded
+* Uses resolver-level caching if provided
+* Fails with `PermError` when lookup limits are exceeded
 
 ---
 
@@ -154,11 +206,11 @@ const (
 
 ### `evalRules(...)`
 
-Recursively evaluates parsed rules with DNS checks.
+Recursively evaluates parsed SPF rules with DNS checks.
 
 ### `expandMacros(...)`
 
-Expands macros in SPF strings based on context.
+Expands macros in SPF strings using runtime context.
 
 ### `parse(...)`
 
@@ -169,6 +221,3 @@ Parses SPF TXT records into a structured rule list.
 ## 📄 License
 
 MIT — See the [GitHub repository](https://github.com/kisshan13/anotherspf) for details.
-
----
-
