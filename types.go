@@ -1,6 +1,7 @@
 package anotherspf
 
 import (
+	"context"
 	"net"
 	"sync"
 )
@@ -78,9 +79,9 @@ type SPFInfo struct {
 }
 
 type DNSResolver interface {
-	LookupTXT(host string) ([]string, error)
-	LookupIP(host string) ([]net.IP, error)
-	LookupMX(name string) ([]*net.MX, error)
+	LookupTXT(ctx context.Context, host string) ([]string, error)
+	LookupIP(ctx context.Context, host string) ([]net.IP, error)
+	LookupMX(ctx context.Context, name string) ([]*net.MX, error)
 }
 
 type Lookup struct {
