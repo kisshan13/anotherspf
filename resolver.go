@@ -2,16 +2,20 @@ package anotherspf
 
 import "net"
 
-type defaultResolver struct{}
+type DefaultResolver struct{}
 
-func (d *defaultResolver) LookupTXT(host string) ([]string, error) {
+func NewDefaultResolver() *DefaultResolver {
+	return &DefaultResolver{}
+}
+
+func (d *DefaultResolver) LookupTXT(host string) ([]string, error) {
 	return net.LookupTXT(host)
 }
 
-func (d *defaultResolver) LookupIP(host string) ([]net.IP, error) {
+func (d *DefaultResolver) LookupIP(host string) ([]net.IP, error) {
 	return net.LookupIP(host)
 }
 
-func (d *defaultResolver) LookupMX(name string) ([]*net.MX, error) {
+func (d *DefaultResolver) LookupMX(name string) ([]*net.MX, error) {
 	return net.LookupMX(name)
 }

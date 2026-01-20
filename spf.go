@@ -14,7 +14,7 @@ func Check(ip string, domain string, sender string, resolver DNSResolver) (*SPFI
 	}
 
 	if resolver == nil {
-		info.resolver = &defaultResolver{}
+		info.resolver = NewDefaultResolver()
 	}
 
 	records, err := info.evalTxt(domain)
